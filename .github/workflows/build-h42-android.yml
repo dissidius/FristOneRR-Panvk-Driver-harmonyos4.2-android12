@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: fristone-h42-${{ github.ref }}
@@ -51,7 +52,14 @@ jobs:
           git apply --check ../h42/patches/0001-huawei-kirin990-jm-mem-import-32.patch
           git apply ../h42/patches/0001-huawei-kirin990-jm-mem-import-32.patch
           git diff --check
+      - name: Probe published reusable H42 builder image
+        id: builder
+        continue-on-error: true
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull ghcr.io/dissidius/panvk-h42-builder:llvm18-v1
       - name: Restore Ubuntu and Python dependency cache
+        if: steps.builder.outcome != 'success'
         id: deps
         uses: actions/cache/restore@v4
         with:
@@ -67,17 +75,24 @@ jobs:
           restore-keys: |
             h42-ccache-v1-${{ runner.os }}-
       - name: Reuse cached tools, install only missing dependencies
+        if: steps.builder.outcome != 'success'
         timeout-minutes: 7
         run: bash h42/ci/h42-setup.sh h42
       - name: Save prepared dependency cache
-        if: success() && steps.deps.outputs.cache-hit != 'true'
+        if: success() && steps.builder.outcome != 'success' && steps.deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             .ci-apt
             .ci-venv
           key: h42-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('h42/ci/h42-apt.txt', 'h42/ci/h42-python.txt') }}
+      - name: Build with published H42 compiler image
+        if: steps.builder.outcome == 'success'
+        timeout-minutes: 26
+        run: |
+          bash h42/ci/h42-in-container.sh bash -c 'bash h42/scripts/build-h42-android.sh mesa "$ANDROID_HOME/ndk/29.0.14206865"'
       - name: Build native shader tools and Android driver
+        if: steps.builder.outcome != 'success'
         timeout-minutes: 26
         env:
           CC: clang-18
