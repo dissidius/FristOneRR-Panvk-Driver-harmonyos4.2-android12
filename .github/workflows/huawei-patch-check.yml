@@ -1,0 +1,34 @@
+name: Verify Huawei Kirin 990 source patch
+on:
+  push:
+    paths:
+      - 'patches/**'
+      - '.github/workflows/huawei-patch-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout patch repository
+        uses: actions/checkout@v4
+        with:
+          path: patches-repo
+      - name: Checkout FristOneRR PanVK source at a pinned revision
+        uses: actions/checkout@v4
+        with:
+          repository: FristOneRR-Admin/FristOneRR-Panvk-Source
+          ref: efd07bab401b263a9ac114560ecdb9a2934f5d43
+          path: mesa
+      - name: Apply source patch exactly
+        run: |
+          set -eux
+          cd mesa
+          git apply --check ../patches-repo/patches/0001-huawei-kirin990-jm-mem-import-32.patch
+          git apply ../patches-repo/patches/0001-huawei-kirin990-jm-mem-import-32.patch
+          grep -q kbase_mem_import_huawei_compat src/panfrost/lib/kmod/kbase_kmod.c
+          git diff --check
+          echo 'Source patch applies cleanly. Not yet a compiled Android driver.'
