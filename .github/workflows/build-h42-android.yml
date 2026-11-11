@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/build-h42-android.yml'
       - 'scripts/build-h42-android.sh'
+      - 'ci/**'
       - 'patches/0001-huawei-kirin990-jm-mem-import-32.patch'
   workflow_dispatch:
 
@@ -57,7 +58,7 @@ jobs:
           path: |
             .ci-apt
             .ci-venv
-          key: h42-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ci/h42-apt.txt', 'ci/h42-python.txt') }}
+          key: h42-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('h42/ci/h42-apt.txt', 'h42/ci/h42-python.txt') }}
       - name: Restore incremental compiler cache
         uses: actions/cache/restore@v4
         with:
@@ -75,7 +76,7 @@ jobs:
           path: |
             .ci-apt
             .ci-venv
-          key: h42-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ci/h42-apt.txt', 'ci/h42-python.txt') }}
+          key: h42-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('h42/ci/h42-apt.txt', 'h42/ci/h42-python.txt') }}
       - name: Build native shader tools and Android driver
         timeout-minutes: 26
         env:
