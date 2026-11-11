@@ -16,8 +16,8 @@ python3 - <<'PY'
 from pathlib import Path
 p=Path("meson.build")
 s=p.read_text()
-old="add_project_link_arguments(\\n  '-llog',\\n  language : ['c', 'cpp'],\\n)"
-new="if host_machine.system() == 'android'\\n"+old+"\\nendif"
+old="add_project_link_arguments(\n  '-llog',\n  language : ['c', 'cpp'],\n)"
+new="if host_machine.system() == 'android'\n"+old+"\nendif"
 if s.count(old)!=1:
     raise SystemExit("Cannot safely guard FristOneRR's Android-only liblog")
 p.write_text(s.replace(old,new,1))
