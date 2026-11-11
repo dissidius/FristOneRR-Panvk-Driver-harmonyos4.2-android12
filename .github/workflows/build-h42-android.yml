@@ -1,0 +1,88 @@
+name: Build FristOneRR H42 Android driver ZIPs
+on:
+  push:
+    branches: [harmony42-android-build]
+    paths:
+      - '.github/workflows/build-h42-android.yml'
+      - 'scripts/build-h42-android.sh'
+      - 'patches/0001-huawei-kirin990-jm-mem-import-32.patch'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fristone-h42-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout compatibility fork
+        uses: actions/checkout@v4
+        with:
+          path: h42
+      - name: Checkout pinned FristOneRR Mesa source
+        uses: actions/checkout@v4
+        with:
+          repository: FristOneRR-Admin/FristOneRR-Panvk-Source
+          ref: efd07bab401b263a9ac114560ecdb9a2934f5d43
+          path: mesa
+      - name: Apply verified Huawei compatibility patch
+        run: |
+          set -euo pipefail
+          cd mesa
+          git apply --check ../h42/patches/0001-huawei-kirin990-jm-mem-import-32.patch
+          git apply ../h42/patches/0001-huawei-kirin990-jm-mem-import-32.patch
+          git diff --check
+      - name: Install host build tools (fail fast on DNS errors)
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          timeout 8s getent hosts archive.ubuntu.com >/dev/null || { echo 'CI-NETWORK: Ubuntu DNS unavailable'; exit 2; }
+          timeout 45s sudo apt-get update -o Acquire::Retries=0 -o Acquire::http::Timeout=8 -o APT::Update::Error-Mode=any
+          timeout 95s sudo apt-get install -y --no-install-recommends -o Acquire::Retries=0 -o Acquire::http::Timeout=8 \
+            build-essential cmake ninja-build pkg-config zip python3-venv \
+            glslang-tools llvm-18-dev clang-18 libclang-18-dev \
+            libclc-18-dev libllvmspirvlib-18-dev spirv-tools
+          python3 -m venv "$GITHUB_WORKSPACE/h42-venv"
+          "$GITHUB_WORKSPACE/h42-venv/bin/pip" install 'meson>=1.7,<2' mako pyyaml packaging
+          echo "$GITHUB_WORKSPACE/h42-venv/bin" >> "$GITHUB_PATH"
+          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+      - name: Install Android NDK r29
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -Vr | head -n 1)"
+          test -x "$SDKMANAGER"
+          timeout 180s "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'ndk;29.0.14206865'
+      - name: Build native shader tools and Android driver
+        timeout-minutes: 26
+        env:
+          CC: clang-18
+          CXX: clang++-18
+          LLVM_CONFIG: llvm-config-18
+        run: |
+          set -euo pipefail
+          bash h42/scripts/build-h42-android.sh mesa "$ANDROID_HOME/ndk/29.0.14206865"
+      - name: Upload Android driver ZIPs and SHA256 checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: FristOneRR-H42-Android-EXPERIMENTAL
+          path: |
+            dist/*EXPERIMENTAL.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build logs if compilation fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FristOneRR-H42-build-logs
+          path: |
+            mesa/build-h42-host/meson-logs/
+            mesa/build-h42-android/meson-logs/
+          if-no-files-found: ignore
+          retention-days: 7
