@@ -10,6 +10,18 @@ test -x "$NDK_BIN/aarch64-linux-android31-clang" || {
   echo "BUILD-ERROR: missing NDK Android 31 compiler"; exit 1;
 }
 cd "$SOURCE"
+# This fork links Android liblog unconditionally even for native host codegen
+# tools. Keep the link for Android, but not for Linux host executables.
+python3 - <<'PY'
+from pathlib import Path
+p=Path("meson.build")
+s=p.read_text()
+old="add_project_link_arguments(\\n  '-llog',\\n  language : ['c', 'cpp'],\\n)"
+new="if host_machine.system() == 'android'\\n"+old+"\\nendif"
+if s.count(old)!=1:
+    raise SystemExit("Cannot safely guard FristOneRR's Android-only liblog")
+p.write_text(s.replace(old,new,1))
+PY
 HOST_BUILD=build-h42-host
 ANDROID_BUILD=build-h42-android
 
