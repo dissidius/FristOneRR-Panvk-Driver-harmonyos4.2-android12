@@ -1,0 +1,73 @@
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -1590,6 +1590,51 @@
+ #define BASE_MEM_IMPORT_TYPE_USER_BUFFER 3
+ #endif
+ 
++/*
++ * Huawei Kirin 990 / HarmonyOS 4.2 uses a 32-byte JM MEM_IMPORT ioctl
++ * where the normal 24-byte request returns ENOTTY. Preserve CSF behavior
++ * and copy returned fields back to the standard union on success.
++ */
++static int
++kbase_mem_import_huawei_compat(struct kbase_kmod_dev *kbase_dev,
++                               union kbase_ioctl_mem_import *req)
++{
++   int ret = ioctl(kbase_dev->base.fd, KBASE_IOCTL_MEM_IMPORT, req);
++   if (ret < 0 && errno == ENOTTY && !kbase_dev->is_csf) {
++      union {
++         struct {
++            uint64_t flags;
++            uint64_t phandle;
++            uint32_t type;
++            uint32_t padding;
++            uint64_t reserved;
++         } in;
++         struct {
++            uint64_t flags;
++            uint64_t gpu_va;
++            uint64_t va_pages;
++            uint64_t reserved;
++         } out;
++      } legacy;
++      _Static_assert(sizeof(legacy) == 32,
++                     "Huawei JM MEM_IMPORT must be 32 bytes");
++      memset(&legacy, 0, sizeof(legacy));
++      legacy.in.flags = req->in.flags;
++      legacy.in.phandle = req->in.phandle;
++      legacy.in.type = req->in.type;
++      legacy.in.padding = req->in.padding;
++      ret = ioctl(kbase_dev->base.fd,
++                  _IOWR(KBASE_IOCTL_TYPE, 22, __typeof__(legacy)),
++                  &legacy);
++      if (!ret) {
++         req->out.flags = legacy.out.flags;
++         req->out.gpu_va = legacy.out.gpu_va;
++         req->out.va_pages = legacy.out.va_pages;
++      }
++   }
++   return ret;
++}
++
+ struct pan_kmod_bo *kbase_kmod_bo_import_host(struct pan_kmod_dev *dev,
+                                               void *host_ptr, uint64_t size);
+ 
+@@ -1624,7 +1669,7 @@
+       },
+    };
+ 
+-   if (ioctl(dev->fd, KBASE_IOCTL_MEM_IMPORT, &req)) {
++   if (kbase_mem_import_huawei_compat(kbase_dev, &req)) {
+       if (imp_logs++ < 20)
+          dprintf(2, "[HOSTIMP] import ptr=%p size=%llu FAILED: %s\n", host_ptr,
+                  (unsigned long long)size, strerror(errno));
+@@ -1705,7 +1750,7 @@
+       },
+    };
+ 
+-   if (ioctl(dev->fd, KBASE_IOCTL_MEM_IMPORT, &req)) {
++   if (kbase_mem_import_huawei_compat(kbase_dev, &req)) {
+       mesa_loge("kbase: KBASE_IOCTL_MEM_IMPORT failed: %s", strerror(errno));
+       goto err_close_dmabuf;
+    }
