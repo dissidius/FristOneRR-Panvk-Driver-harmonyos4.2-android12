@@ -73,6 +73,7 @@ meson setup "$ANDROID_BUILD" --cross-file "$ANDROID_BUILD/h42-cross.ini" \
   -Dmesa-clc=system -Dprecomp-compiler=system -Dllvm=disabled \
   -Dzstd=disabled -Dglx=disabled -Dgbm=disabled -Degl=disabled \
   -Dgles1=disabled -Dgles2=disabled \
+  -Dallow-fallback-for=libdrm -Dlibdrm:default_library=static \
   --force-fallback-for=libdrm,expat,zlib
 ninja -C "$ANDROID_BUILD" -j 4 src/panfrost/vulkan/libvulkan_panfrost.so
 
